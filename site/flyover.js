@@ -349,6 +349,8 @@
     const target = dist(back, ahead) > 5 ? bearing(back, ahead) : run.bearing;
     if (instant || run.bearing == null) run.bearing = target;
     else run.bearing += wrap180(target - run.bearing) * run.smooth;
+    // 使用者正在拖曳／旋轉／縮放時先不動鏡頭（jumpTo 會中斷手勢），放開後再把調整記成偏移
+    if (run.playing && (run.pointers > 0 || performance.now() - run.wheelAt < 400 || map.isMoving())) return;
     absorbUserCamera();
     map.jumpTo(camera(here));
     const c = map.getCenter();
@@ -481,7 +483,7 @@
     const km = track.km || path.total / 1000;
     run = {
       track, path, km, zoom: cameraZoom(path.total), zoom0: cameraZoom(path.total), d: 0,
-      offset: [0, 0], bearingOffset: 0, pitch: DEFAULT_PITCH, speed: +store.get("flySpeed", 1) || 1,
+      offset: [0, 0], bearingOffset: 0, pitch: DEFAULT_PITCH, pointers: 0, wheelAt: 0, speed: +store.get("flySpeed", 1) || 1,
       duration: Math.max(25, Math.min(120, 22 + km * 1.3)), playing: false, done: false,
       base: store.get("flyBase", "sat") === "map" ? "map" : "sat", bearing: null, smooth: 0.05,
     };
@@ -525,6 +527,14 @@
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "top-right");
+    // 手指／滑鼠按著地圖時不要移動鏡頭，否則 MapLibre 會取消正在進行的手勢
+    const cv = map.getCanvasContainer();
+    const down = new Set();
+    const sync = () => { if (run === me) run.pointers = down.size; };
+    cv.addEventListener("pointerdown", (e) => { down.add(e.pointerId); sync(); });
+    const up = (e) => { down.delete(e.pointerId); sync(); };
+    window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+    cv.addEventListener("wheel", () => { if (run === me) run.wheelAt = performance.now(); }, { passive: true });
 
     const init = () => {
       if (run !== me || run.ready) return;
