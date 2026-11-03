@@ -247,13 +247,19 @@ def main(paths):
                 col = {h: i for i, h in reversed(list(enumerate(header)))}
                 ci = lambda *keys: next((col[k] for k in keys if k in col), None)  # noqa: E731
                 i_id, i_type, i_file = ci("Activity ID", "活動 ID"), ci("Activity Type", "活動類型"), ci("Filename", "檔案名稱")
+                i_tags = next((i for i, h in enumerate(header) if re.search(r"tag|標籤", h, re.I)), None)
+                i_race = ci("Competition", "Race", "競賽")
                 if i_file is None:
                     continue
                 base = name.rsplit("activities.csv", 1)[0]
                 for r in rows:
                     if len(r) > i_file and r[i_file]:
+                        tags = set(r[i_tags].lower().split("|")) if i_tags is not None and len(r) > i_tags and r[i_tags] else set()
+                        race_col = r[i_race].strip() if i_race is not None and len(r) > i_race else ""
                         meta[base + r[i_file]] = {"id": r[i_id] if i_id is not None else None,
-                                                  "type": r[i_type] if i_type is not None else None}
+                                                  "type": r[i_type] if i_type is not None else None,
+                                                  "tags": tags,
+                                                  "race": "race" in tags or race_col not in ("", "0", "0.0", "false")}
 
         candidates = [n for n in files if re.search(r"\.(gpx|tcx|fit)(\.gz)?$", n, re.I)]
         print(f"{path}: 找到 {len(candidates)} 個活動檔", file=sys.stderr)
@@ -276,6 +282,11 @@ def main(paths):
             sport = folder_sport or (norm_sport(csv_type) if csv_type else res["sport"])
             if csv_type and not sport:
                 sport = None  # CSV 明確是其他運動（例如游泳）
+            # Strava 標籤 offroad + 跑步 = 越野跑（Garmin 同步過來的越野跑常被記成一般跑步）
+            if sport == "run" and not folder_sport and "offroad" in m.get("tags", ()):
+                sport = "trail_run"
+            if sport == "run" and not folder_sport and res["sport"] == "trail_run":
+                sport = "trail_run"  # FIT 檔本身標記為越野跑
             if not sport:
                 stats["other_sport"] += 1
                 continue
@@ -297,6 +308,8 @@ def main(paths):
             rec = {"id": aid, "s": sport, "d": d, "km": round(km, 2), "p": encode(pts)}
             if t:
                 rec["t"] = t
+            if m.get("race"):
+                rec["r"] = 1
             existing[t or aid] = rec
             stats["ok"] += 1
 

@@ -24,6 +24,7 @@
     tracks: [],
     enabled: new Set(SPORTS),
     year: "all",
+    race: "all", // all | only | exclude
     palette: PALETTES[store.get("palette")] ? store.get("palette") : "ember",
     intensity: +store.get("intensity", 5),
     basemap: store.get("basemap", "dark"),
@@ -193,7 +194,7 @@
     return pts;
   }
 
-  function makeTrack(pts, sport, date, km, local) {
+  function makeTrack(pts, sport, date, km, local, race) {
     const xy = new Float64Array(pts.length * 2);
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     let prevX = null;
@@ -209,7 +210,7 @@
     const latlngs = [];
     const lats = pts.map((p) => p[0]), lngs = pts.map((p) => p[1]);
     latlngs.push([Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]);
-    return { xy, bb: [x0, y0, x1, y1], sport, date: date || "", year: (date || "").slice(0, 4), km: km || 0, local: !!local, bounds: latlngs };
+    return { xy, bb: [x0, y0, x1, y1], sport, date: date || "", year: (date || "").slice(0, 4), km: km || 0, local: !!local, race: !!race, bounds: latlngs };
   }
 
   async function loadJson(url) {
@@ -233,7 +234,7 @@
       }
     }
     if (list.length) {
-      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => makeTrack(decodePolyline(a.p), a.s, a.d, a.km));
+      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => makeTrack(decodePolyline(a.p), a.s, a.d, a.km, false, a.r));
       state.generated = [api, imported].map((x) => x && x.generated).filter(Boolean).sort().pop();
     } else {
       state.demo = true;
@@ -294,7 +295,23 @@
     }
     return t.year === state.year;
   }
-  const visibleTracks = () => state.tracks.filter((t) => state.enabled.has(t.sport) && inYear(t));
+  const raceOk = (t) => state.race === "all" || (state.race === "only" ? t.race : !t.race);
+  const visibleTracks = () => state.tracks.filter((t) => state.enabled.has(t.sport) && inYear(t) && raceOk(t));
+
+  function buildRace() {
+    const n = state.tracks.filter((t) => t.race && inYear(t) && state.enabled.has(t.sport)).length;
+    const opts = [["all", "全部活動"], ["only", `只看競賽（${n}）`], ["exclude", "排除競賽"]];
+    const seg = $("#raceSeg");
+    seg.innerHTML = "";
+    for (const [v, label] of opts) {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.textContent = label; btn.setAttribute("role", "radio");
+      btn.setAttribute("aria-checked", String(state.race === v));
+      btn.onclick = () => { state.race = v; update(); };
+      seg.appendChild(btn);
+    }
+    $("#raceSection").hidden = !state.tracks.some((t) => t.race);
+  }
 
   // ---------- 介面 ----------
   const $ = (s) => document.querySelector(s);
@@ -346,7 +363,7 @@
 
   function updateCounts() {
     const counts = Object.fromEntries(SPORTS.map((s) => [s, 0]));
-    state.tracks.forEach((t) => { if (inYear(t)) counts[t.sport]++; });
+    state.tracks.forEach((t) => { if (inYear(t) && raceOk(t)) counts[t.sport]++; });
     for (const [g, members] of Object.entries(GROUPS)) counts[g] = members.reduce((a, s) => a + counts[s], 0);
     tree.querySelectorAll("em[data-count]").forEach((el) => (el.textContent = counts[el.dataset.count].toLocaleString()));
   }
@@ -364,7 +381,7 @@
   }
 
   function update() {
-    syncTree(); updateCounts(); updateStats(); heat.redraw();
+    syncTree(); updateCounts(); buildRace(); updateStats(); heat.redraw();
   }
 
   function fitToData() {
