@@ -211,14 +211,15 @@
         <div class="fly-ctrl">
           <button class="fly-play" data-act="play" type="button" aria-label="播放"></button>
           <div class="seg fly-speed" role="radiogroup" aria-label="播放速度"></div>
-          <button class="fly-chip" data-act="follow" type="button">重設視角</button>
+          <button class="fly-chip" data-act="reset" type="button">重設視角</button>
+          <button class="fly-chip fly-follow" data-act="follow" type="button">跟隨</button>
         </div>
       </div>`;
     document.body.appendChild(el);
     const q = (s) => el.querySelector(s);
     ui = {
       el, q, title: q(".fly-title b"), sub: q(".fly-title span"), dot: q(".fly-title .dot"),
-      loading: q(".fly-loading"), play: q(".fly-play"), base: q('[data-act="base"]'), follow: q('[data-act="follow"]'),
+      loading: q(".fly-loading"), play: q(".fly-play"), base: q('[data-act="base"]'), follow: q('[data-act="follow"]'), reset: q('[data-act="reset"]'),
       scrub: q(".fly-scrub"), area: q(".fly-scrub .area"), line: q(".fly-scrub .line"),
       done: q(".fly-done"), cursor: q(".fly-cursor"), speed: q(".fly-speed"),
       dist: q('[data-v="dist"]'), ele: q('[data-v="ele"]'), gain: q('[data-v="gain"]'),
@@ -229,7 +230,8 @@
       if (act === "close") close();
       else if (act === "play") togglePlay();
       else if (act === "base") setBase(run.base === "sat" ? "map" : "sat");
-      else if (act === "follow") { resetView(); frameCamera(true); }
+      else if (act === "follow") refollow(false);
+      else if (act === "reset") refollow(true);
     });
     // 拖曳進度
     const seek = (e) => {
@@ -349,12 +351,10 @@
     const target = dist(back, ahead) > 5 ? bearing(back, ahead) : run.bearing;
     if (instant || run.bearing == null) run.bearing = target;
     else run.bearing += wrap180(target - run.bearing) * run.smooth;
-    // 使用者正在拖曳／旋轉／縮放時先不動鏡頭（jumpTo 會中斷手勢），放開後再把調整記成偏移
+    if (!run.follow) return; // 使用者自己調整過視角，按「跟隨」前鏡頭不動
+    // 手指／滑鼠按著或地圖正在動時先不動鏡頭（jumpTo 會中斷手勢）
     if (run.playing && (run.pointers > 0 || performance.now() - run.wheelAt < 400 || map.isMoving())) return;
-    absorbUserCamera();
     map.jumpTo(camera(here));
-    const c = map.getCenter();
-    run.lastCam = { here, routeBearing: run.bearing, center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
   }
 
   function render(instant) {
@@ -406,6 +406,7 @@
     if (!run || !run.ready) return;
     if (run.playing) { pause(); return; }
     if (run.done) { run.d = 0; run.done = false; run.bearing = null; }
+    if (run.d === 0) setFollow(true);
     const start = () => { run.playing = true; run.last = 0; setPlayIcon(); run.raf = requestAnimationFrame(tick); };
     // 從總覽畫面切入起點
     if (run.d === 0) {
@@ -422,7 +423,8 @@
   }
 
   function finish() {
-    run.playing = false; run.done = true; run.lastCam = null; setPlayIcon();
+    run.playing = false; run.done = true; setPlayIcon();
+    if (!run.follow) return;
     map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     map.fitBounds(bounds(run.path.coords), { padding: pad(), pitch: 50, bearing: run.bearing || 0, duration: 3000, essential: true });
   }
@@ -436,22 +438,25 @@
       bearing: run.bearing + run.bearingOffset, pitch: run.pitch, zoom: run.zoom, padding: followPad(),
     };
   }
-  function resetView() {
-    run.offset = [0, 0]; run.bearingOffset = 0; run.pitch = DEFAULT_PITCH; run.zoom = run.zoom0; run.lastCam = null;
-    ui.follow.hidden = true;
+  const isDefaultView = () => !run.bearingOffset && run.pitch === DEFAULT_PITCH && run.zoom === run.zoom0 && !run.offset[0] && !run.offset[1];
+  function setFollow(on) {
+    run.follow = on;
+    ui.follow.hidden = on;
+    ui.reset.hidden = !on || isDefaultView();
   }
-  // 上一格鏡頭和目前地圖狀態不同 → 是使用者用手勢（拖曳、旋轉、滾輪、雙指）調整的，把差異記成偏移
-  function absorbUserCamera() {
-    const L = run.lastCam;
-    if (!L) return;
-    const c = map.getCenter(), z = map.getZoom(), b = map.getBearing(), p = map.getPitch();
-    const moved = Math.abs(c.lng - L.center[0]) > 1e-7 || Math.abs(c.lat - L.center[1]) > 1e-7 ||
-      Math.abs(z - L.zoom) > 1e-4 || Math.abs(wrap180(b - L.bearing)) > 0.01 || Math.abs(p - L.pitch) > 0.01;
-    if (!moved) return;
-    run.offset = [c.lng - L.here[0], c.lat - L.here[1]];
-    run.bearingOffset = wrap180(b - L.routeBearing);
-    run.pitch = p; run.zoom = z;
-    ui.follow.hidden = false;
+  // 按「跟隨」：沿用目前的方位、俯角、遠近回到目前位置；「重設視角」：回到預設鏡頭
+  function refollow(reset) {
+    if (!run || !run.ready) return;
+    run.offset = [0, 0];
+    if (reset) { run.bearingOffset = 0; run.pitch = DEFAULT_PITCH; run.zoom = run.zoom0; }
+    else {
+      if (run.bearing != null) run.bearingOffset = wrap180(map.getBearing() - run.bearing);
+      run.pitch = map.getPitch();
+      run.zoom = Math.max(11, Math.min(18, map.getZoom()));
+    }
+    setFollow(true);
+    if (run.bearing == null) return;
+    map.easeTo({ ...camera(locate(run.path, run.d).p), duration: 800, essential: true });
   }
 
   function followPad() {
@@ -483,7 +488,7 @@
     const km = track.km || path.total / 1000;
     run = {
       track, path, km, zoom: cameraZoom(path.total), zoom0: cameraZoom(path.total), d: 0,
-      offset: [0, 0], bearingOffset: 0, pitch: DEFAULT_PITCH, pointers: 0, wheelAt: 0, speed: +store.get("flySpeed", 1) || 1,
+      offset: [0, 0], bearingOffset: 0, pitch: DEFAULT_PITCH, pointers: 0, wheelAt: 0, follow: true, speed: +store.get("flySpeed", 1) || 1,
       duration: Math.max(25, Math.min(120, 22 + km * 1.3)), playing: false, done: false,
       base: store.get("flyBase", "sat") === "map" ? "map" : "sat", bearing: null, smooth: 0.05,
     };
@@ -501,7 +506,7 @@
     ui.el.querySelectorAll("[data-timed]").forEach((x) => (x.hidden = !path.ts));
     ui.q(".fly-stats").style.setProperty("--cols", path.ts ? 5 : 3);
     ui.line.removeAttribute("d"); ui.area.removeAttribute("d");
-    ui.follow.hidden = true;
+    ui.follow.hidden = true; ui.reset.hidden = true;
     setBase(run.base); buildSpeeds(); setPlayIcon();
 
     const me = run;
@@ -535,6 +540,10 @@
     const up = (e) => { down.delete(e.pointerId); sync(); };
     window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
     cv.addEventListener("wheel", () => { if (run === me) run.wheelAt = performance.now(); }, { passive: true });
+    // 使用者拖曳、旋轉、縮放（含右上角按鈕）→ 停止跟隨
+    const stopFollow = () => { if (run === me && run.ready && run.follow) setFollow(false); };
+    map.on("move", () => { if (run === me && (run.pointers > 0 || performance.now() - run.wheelAt < 400)) stopFollow(); });
+    map.on("movestart", (e) => { if (e.originalEvent) stopFollow(); });
 
     const init = () => {
       if (run !== me || run.ready) return;
