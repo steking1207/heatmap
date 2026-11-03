@@ -48,14 +48,57 @@
   }
   const wrap180 = (d) => ((d + 540) % 360) - 180;
 
-  function buildPath(pts) {
+  function decodeInts(str) {
+    const out = []; let i = 0, v = 0;
+    while (i < str.length) {
+      let shift = 0, result = 0, b;
+      do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      v += result & 1 ? ~(result >> 1) : result >> 1;
+      out.push(v);
+    }
+    return out;
+  }
+  // 每點海拔／時間：匯入資料是編碼字串（e、ts），本機 GPX 是陣列（eleArr、tsArr）
+  function series(track, key, arrKey) {
+    const v = track[arrKey] || (typeof track[key] === "string" ? decodeInts(track[key]) : null);
+    return v && v.length === track.pts.length ? v : null;
+  }
+
+  function buildPath(pts, eleIn, tsIn) {
     const coords = pts.map(([lat, lng]) => [lng, lat]);
     // 移除重複點
-    const c = [coords[0]];
-    for (let i = 1; i < coords.length; i++) if (dist(c[c.length - 1], coords[i]) > 0.5) c.push(coords[i]);
+    const c = [coords[0]], ele = eleIn && [eleIn[0]], ts = tsIn && [tsIn[0]];
+    for (let i = 1; i < coords.length; i++) {
+      if (dist(c[c.length - 1], coords[i]) > 0.5) {
+        c.push(coords[i]);
+        if (ele) ele.push(eleIn[i]);
+        if (ts) ts.push(tsIn[i]);
+      } else if (ts) ts[ts.length - 1] = tsIn[i]; // 停留時間算在這一點
+    }
     const cum = [0];
     for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + dist(c[i - 1], c[i]));
-    return { coords: c, cum, total: cum[cum.length - 1] };
+    const path = { coords: c, cum, total: cum[cum.length - 1], ele };
+    if (ts && ts[ts.length - 1] > ts[0]) {
+      // 播放時間：停下來（速度 < 0.4 m/s）的時段最多只算 3 秒，避免畫面卡住
+      const pt = [0];
+      for (let i = 1; i < c.length; i++) {
+        const dt = Math.max(0, ts[i] - ts[i - 1]), dd = cum[i] - cum[i - 1];
+        pt.push(pt[i - 1] + (dt > 3 && dd / dt < 0.4 ? Math.max(3, dd / 1.5) : dt) + 1e-3);
+      }
+      path.ts = ts.map((v) => v - ts[0]);
+      path.pt = pt;
+    }
+    return path;
+  }
+  // 在遞增陣列 xs 上找 x，回傳對應 ys 的內插值
+  function interp(xs, ys, x) {
+    if (x <= xs[0]) return ys[0];
+    const n = xs.length - 1;
+    if (x >= xs[n]) return ys[n];
+    let lo = 0, hi = n;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= x) lo = m; else hi = m; }
+    const f = (x - xs[lo]) / (xs[hi] - xs[lo] || 1);
+    return ys[lo] + (ys[hi] - ys[lo]) * f;
   }
   // 沿路線距離 d 公尺處的位置，以及所在線段索引
   function locate(path, d) {
@@ -155,6 +198,8 @@
       <div class="fly-bottom">
         <div class="fly-stats">
           <div><b data-v="dist">0.0</b><span>公里</span></div>
+          <div data-timed><b data-v="time">—</b><span>時間</span></div>
+          <div data-timed><b data-v="pace">—</b><span data-v="paceLabel">配速 /km</span></div>
           <div><b data-v="ele">—</b><span>海拔 m</span></div>
           <div><b data-v="gain">—</b><span>累積爬升 m</span></div>
         </div>
@@ -177,6 +222,7 @@
       scrub: q(".fly-scrub"), area: q(".fly-scrub .area"), line: q(".fly-scrub .line"),
       done: q(".fly-done"), cursor: q(".fly-cursor"), speed: q(".fly-speed"),
       dist: q('[data-v="dist"]'), ele: q('[data-v="ele"]'), gain: q('[data-v="gain"]'),
+      time: q('[data-v="time"]'), pace: q('[data-v="pace"]'), paceLabel: q('[data-v="paceLabel"]'),
     };
     el.addEventListener("click", (e) => {
       const act = e.target.closest("[data-act]")?.dataset.act;
@@ -279,6 +325,17 @@
   const line = (coords) => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } });
 
   // ---------- 播放 ----------
+  const clock = (s) => {
+    s = Math.round(s);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0");
+  };
+  const pace = (secPerKm) => {
+    if (!isFinite(secPerKm) || secPerKm > 3600) return "—";
+    const s = Math.round(secPerKm);
+    return Math.floor(s / 60) + "'" + String(s % 60).padStart(2, "0") + '"';
+  };
+
   function cameraZoom(total) {
     const km = total / 1000;
     return km < 3 ? 15.8 : km < 8 ? 15.2 : km < 20 ? 14.6 : km < 60 ? 14 : 13.4;
@@ -311,9 +368,18 @@
     ui.cursor.style.left = f * 100 + "%";
     ui.scrub.setAttribute("aria-valuenow", Math.round(f * 100));
     ui.dist.textContent = ((run.km || path.total / 1000) * f).toFixed(1);
-    if (run.ele) {
+    if (path.ele) ui.ele.textContent = Math.round(interp(path.cum, path.ele, run.d)).toLocaleString();
+    else if (run.ele) {
       const k = Math.min(run.ele.length - 1, Math.round(f * (run.ele.length - 1)));
       ui.ele.textContent = Math.round(run.ele[k]).toLocaleString();
+    }
+    if (path.ts) {
+      ui.time.textContent = clock(interp(path.cum, path.ts, run.d));
+      // 前後各 150 公尺的平均配速／速度
+      const w = Math.min(150, path.total / 4);
+      const a = Math.max(0, run.d - w), b = Math.min(path.total, run.d + w);
+      const sec = interp(path.cum, path.ts, b) - interp(path.cum, path.ts, a), m = b - a;
+      ui.pace.textContent = sec > 0 && m > 0 ? (run.track.sport === "ride" ? (m / sec * 3.6).toFixed(1) : pace(sec / m * 1000)) : "—";
     }
   }
 
@@ -322,7 +388,11 @@
     const dt = Math.min(0.25, (now - (run.last || now)) / 1000);
     run.last = now;
     run.smooth = 1 - Math.exp(-dt / 0.9);
-    run.d += (run.path.total / run.duration) * run.speed * dt;
+    const P = run.path;
+    if (P.pt) { // 依實際時間播放：配速快的路段跑得快
+      const n = P.pt.length - 1;
+      run.d = interp(P.pt, P.cum, interp(P.cum, P.pt, run.d) + (P.pt[n] / run.duration) * run.speed * dt);
+    } else run.d += (P.total / run.duration) * run.speed * dt;
     if (run.d >= run.path.total) {
       run.d = run.path.total; render(); finish(); return;
     }
@@ -405,7 +475,7 @@
     if (!track || !track.pts || track.pts.length < 2) return;
     if (!ui) buildUi();
     if (run) teardown();
-    const path = buildPath(track.pts);
+    const path = buildPath(track.pts, series(track, "e", "eleArr"), series(track, "ts", "tsArr"));
     if (path.total < 50) return;
     const color = SPORT_COLORS[track.sport] || "#ff6a2b";
     const km = track.km || path.total / 1000;
@@ -424,16 +494,25 @@
     ui.sub.textContent = track.date || "";
     ui.loading.hidden = false; ui.loading.textContent = "載入地形中…";
     ui.ele.textContent = "—"; ui.gain.textContent = "—"; ui.dist.textContent = "0.0";
+    ui.time.textContent = "—"; ui.pace.textContent = "—";
+    ui.paceLabel.textContent = track.sport === "ride" ? "速度 km/h" : "配速 /km";
+    ui.el.querySelectorAll("[data-timed]").forEach((x) => (x.hidden = !path.ts));
+    ui.q(".fly-stats").style.setProperty("--cols", path.ts ? 5 : 3);
     ui.line.removeAttribute("d"); ui.area.removeAttribute("d");
     ui.follow.hidden = true;
     setBase(run.base); buildSpeeds(); setPlayIcon();
 
     const me = run;
-    elevationProfile(path, 240).then((ele) => {
+    const recorded = path.ele && (() => {
+      const out = [];
+      for (let k = 0; k <= 240; k++) out.push(interp(path.cum, path.ele, (path.total * k) / 240));
+      return out;
+    })();
+    (recorded ? Promise.resolve(recorded) : elevationProfile(path, 240)).then((ele) => {
       if (run !== me || !ele) return;
       run.ele = ele;
       drawProfile(ele);
-      ui.gain.textContent = Math.round(profileStats(ele).gain).toLocaleString();
+      ui.gain.textContent = Math.round(profileStats(path.ele || ele).gain).toLocaleString();
       render(!run.playing);
     }).catch(() => {});
 

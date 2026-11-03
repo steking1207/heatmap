@@ -48,7 +48,7 @@ jobs:
           STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
           STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
-          PRIVACY_TRIM_M: ${{ vars.PRIVACY_TRIM_M || '200' }}
+          PRIVACY_TRIM_M: ${{ vars.PRIVACY_TRIM_M || '100' }}
         run: |
           if [ -z "$STRAVA_REFRESH_TOKEN" ]; then
             echo "::notice::尚未設定 Strava secrets，網站會顯示示範資料。"

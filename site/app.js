@@ -235,7 +235,7 @@
       }
     }
     if (list.length) {
-      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => Object.assign(makeTrack(decodePolyline(a.p), a.s, a.d, a.km, false, a.r), { id: String(a.id) }));
+      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => Object.assign(makeTrack(decodePolyline(a.p), a.s, a.d, a.km, false, a.r), { id: String(a.id), e: a.e, ts: a.ts }));
       state.generated = [api, imported].map((x) => x && x.generated).filter(Boolean).sort().pop();
     } else {
       state.demo = true;
@@ -414,14 +414,20 @@
     for (const f of files) {
       if (!/\.gpx$/i.test(f.name)) continue;
       const doc = new DOMParser().parseFromString(await f.text(), "application/xml");
-      const pts = [...doc.querySelectorAll("trkpt, rtept")].map((p) => [+p.getAttribute("lat"), +p.getAttribute("lon")]).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+      const nodes = [...doc.querySelectorAll("trkpt, rtept")].filter((p) => isFinite(+p.getAttribute("lat")) && isFinite(+p.getAttribute("lon")));
+      const pts = nodes.map((p) => [+p.getAttribute("lat"), +p.getAttribute("lon")]);
+      const eleArr = nodes.map((p) => parseFloat(p.querySelector("ele")?.textContent));
+      const tsArr = nodes.map((p) => Date.parse(p.querySelector("time")?.textContent || "") / 1000);
       if (pts.length < 2) continue;
       const type = doc.querySelector("trk > type")?.textContent || "";
       const name = doc.querySelector("trk > name, metadata > name")?.textContent || f.name;
       const time = doc.querySelector("trkpt time, metadata > time")?.textContent || "";
       let km = 0;
       for (let i = 1; i < pts.length; i++) km += map.distance(pts[i - 1], pts[i]) / 1000;
-      state.tracks.push(makeTrack(pts, guessSport(type, name), time.slice(0, 10), km, true));
+      const t = makeTrack(pts, guessSport(type, name), time.slice(0, 10), km, true);
+      if (eleArr.every(isFinite)) t.eleArr = eleArr;
+      if (tsArr.every(isFinite)) t.tsArr = tsArr;
+      state.tracks.push(t);
       added++;
     }
     if (!added) { showBanner("沒有找到可用的 GPX 路線。"); return; }

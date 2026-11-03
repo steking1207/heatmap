@@ -4,7 +4,7 @@
 需要環境變數：
   STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN
 選用：
-  PRIVACY_TRIM_M  每條路線頭尾各裁掉幾公尺（預設 200，保護住家位置；設 0 關閉）
+  PRIVACY_TRIM_M  每條路線頭尾各裁掉幾公尺（預設 100，保護住家位置；設 0 關閉）
   OUTPUT          輸出路徑（預設 site/data/activities.json）
 
 只使用 Python 標準函式庫。
@@ -128,7 +128,7 @@ def trim(pts, meters):
 
 
 def main():
-    trim_m = float(os.environ.get("PRIVACY_TRIM_M", "200"))
+    trim_m = float(os.environ.get("PRIVACY_TRIM_M", "100"))
     output = os.environ.get("OUTPUT", "site/data/activities.json")
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}

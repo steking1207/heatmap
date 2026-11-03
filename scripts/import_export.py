@@ -11,7 +11,7 @@
   python3 scripts/import_export.py <匯出檔.zip 或資料夾> [更多路徑…]
 
 選項（環境變數）：
-  PRIVACY_TRIM_M   路線頭尾各裁掉幾公尺（預設 200，0 為不裁切）
+  PRIVACY_TRIM_M   路線頭尾各裁掉幾公尺（預設 100，0 為不裁切）
   OUTPUT           輸出檔（預設 site/data/imported.json，會與既有內容合併）
 """
 import csv
@@ -70,14 +70,30 @@ def parse_time(s):
         return None
 
 
+def num(s):
+    try:
+        return float(s) if s not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def epoch(s):
+    t = parse_time(s)
+    if t is None:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return t.timestamp()
+
+
 def parse_gpx(data):
     root = strip_ns(ET.fromstring(data))
     pts = []
-    for p in root.iter("trkpt"):
-        pts.append((float(p.get("lat")), float(p.get("lon"))))
-    if not pts:
-        for p in root.iter("rtept"):
-            pts.append((float(p.get("lat")), float(p.get("lon"))))
+    for tag in ("trkpt", "rtept"):
+        for p in root.iter(tag):
+            pts.append((float(p.get("lat")), float(p.get("lon")), num(p.findtext("ele")), epoch(p.findtext("time"))))
+        if pts:
+            break
     t = root.find(".//trkpt/time")
     if t is None:
         t = root.find(".//metadata/time")
@@ -92,7 +108,8 @@ def parse_tcx(data):
     for tp in root.iter("Trackpoint"):
         pos = tp.find("Position")
         if pos is not None:
-            pts.append((float(pos.findtext("LatitudeDegrees")), float(pos.findtext("LongitudeDegrees"))))
+            pts.append((float(pos.findtext("LatitudeDegrees")), float(pos.findtext("LongitudeDegrees")),
+                        num(tp.findtext("AltitudeMeters")), epoch(tp.findtext("Time"))))
     act = root.find(".//Activity")
     sport = start = None
     if act is not None:
@@ -117,7 +134,17 @@ def parse_fit(data):
                 if frame.has_field("position_lat") and frame.has_field("position_long"):
                     la, lo = frame.get_value("position_lat"), frame.get_value("position_long")
                     if la is not None and lo is not None:
-                        pts.append((la * semi, lo * semi))
+                        ele = None
+                        for k in ("enhanced_altitude", "altitude"):
+                            if frame.has_field(k) and frame.get_value(k) is not None:
+                                ele = float(frame.get_value(k))
+                                break
+                        ts = frame.get_value("timestamp") if frame.has_field("timestamp") else None
+                        if isinstance(ts, datetime):
+                            ts = (ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)).timestamp()
+                        else:
+                            ts = None
+                        pts.append((la * semi, lo * semi, ele, ts))
                 if start is None and frame.has_field("timestamp"):
                     start = frame.get_value("timestamp")
             elif frame.name in ("session", "sport"):
@@ -220,13 +247,38 @@ def simplify(pts, tol_m=6):
     return [p for p, k in zip(pts, keep) if k]
 
 
+def encode_ints(vals):
+    """一維整數序列，用和 polyline 一樣的差值編碼。"""
+    out, prev = [], 0
+    for v in vals:
+        d = v - prev
+        x = ~(d << 1) if d < 0 else d << 1
+        while x >= 0x20:
+            out.append(chr((0x20 | (x & 0x1F)) + 63))
+            x >>= 5
+        out.append(chr(x + 63))
+        prev = v
+    return "".join(out)
+
+
+def fill(vals):
+    """缺值以前後最近的值補上；缺超過一半就放棄。"""
+    if sum(v is None for v in vals) > len(vals) / 2:
+        return None
+    out, last = [], next(v for v in vals if v is not None)
+    for v in vals:
+        last = v if v is not None else last
+        out.append(last)
+    return out
+
+
 def path_km(pts):
     from fetch_strava import haversine
     return sum(haversine(pts[i - 1], pts[i]) for i in range(1, len(pts))) / 1000
 
 
 def main(paths):
-    trim_m = float(os.environ.get("PRIVACY_TRIM_M", "200"))
+    trim_m = float(os.environ.get("PRIVACY_TRIM_M", "100"))
     output = os.environ.get("OUTPUT", "site/data/imported.json")
 
     existing = {}
@@ -305,7 +357,18 @@ def main(paths):
             local = start.astimezone(timezone.utc).timestamp() + pts[0][1] / 15 * 3600 if start else None
             d = time.strftime("%Y-%m-%d", time.gmtime(local)) if local else ""
             aid = m.get("id") or "x" + hashlib.sha1((t or name).encode()).hexdigest()[:12]
-            rec = {"id": aid, "s": sport, "d": d, "km": round(km, 2), "p": encode(pts)}
+            rec = {"id": aid, "s": sport, "d": d, "km": round(km, 2), "p": encode([p[:2] for p in pts])}
+            # 每點海拔（公尺）與時間（距第一點的秒數），供 3D 鳥瞰使用
+            ele = fill([p[2] if len(p) > 2 else None for p in pts])
+            if ele:
+                rec["e"] = encode_ints([round(v) for v in ele])
+            ts = fill([p[3] if len(p) > 3 else None for p in pts])
+            if ts and ts[-1] > ts[0]:
+                t0, sec, prev = ts[0], [], 0
+                for v in ts:
+                    prev = max(prev, round(v - t0))  # 確保遞增
+                    sec.append(prev)
+                rec["ts"] = encode_ints(sec)
             if t:
                 rec["t"] = t
             if m.get("race"):
