@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>我的足跡熱圖</title>
+  <meta name="description" content="以自己的 Strava 活動繪製的個人運動熱圖">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111'/><path d='M6 24 C10 8, 16 26, 26 8' stroke='%23ff6a2b' stroke-width='3.5' fill='none' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map" aria-label="運動熱圖"></div>
+
+  <aside id="panel" class="panel">
+    <header class="panel-head">
+      <div>
+        <h1>我的足跡熱圖</h1>
+        <p id="subtitle" class="muted">載入中…</p>
+      </div>
+      <button id="togglePanel" class="icon-btn" aria-label="收合面板" aria-expanded="true">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <div class="panel-body">
+      <section>
+        <h2>運動類型</h2>
+        <ul class="tree" id="sportTree">
+          <li>
+            <label class="row master"><input type="checkbox" data-group="all" checked> <span>所有運動</span><em data-count="all"></em></label>
+            <ul>
+              <li>
+                <label class="row group"><input type="checkbox" data-group="foot" checked> <span>所有足部運動</span><em data-count="foot"></em></label>
+                <ul>
+                  <li><label class="row"><input type="checkbox" data-sport="run" checked> <i class="dot run"></i><span>跑步</span><em data-count="run"></em></label></li>
+                  <li><label class="row"><input type="checkbox" data-sport="trail_run" checked> <i class="dot trail_run"></i><span>山徑越野跑</span><em data-count="trail_run"></em></label></li>
+                  <li><label class="row"><input type="checkbox" data-sport="walk" checked> <i class="dot walk"></i><span>步行</span><em data-count="walk"></em></label></li>
+                  <li><label class="row"><input type="checkbox" data-sport="hike" checked> <i class="dot hike"></i><span>健行</span><em data-count="hike"></em></label></li>
+                </ul>
+              </li>
+              <li>
+                <label class="row group"><input type="checkbox" data-group="cycle" checked> <span>所有騎車運動</span><em data-count="cycle"></em></label>
+                <ul>
+                  <li><label class="row"><input type="checkbox" data-sport="ride" checked> <i class="dot ride"></i><span>騎車</span><em data-count="ride"></em></label></li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>時間範圍</h2>
+        <div class="seg" id="yearSeg" role="radiogroup" aria-label="年份"></div>
+      </section>
+
+      <section>
+        <h2>配色</h2>
+        <div class="swatches" id="palettes" role="radiogroup" aria-label="配色"></div>
+        <label class="slider">
+          <span>亮度</span>
+          <input type="range" id="intensity" min="1" max="10" value="5">
+        </label>
+        <label class="slider">
+          <span>底圖</span>
+          <select id="basemap">
+            <option value="dark">深色</option>
+            <option value="light">淺色</option>
+            <option value="satellite">衛星</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="stats" id="stats"></section>
+
+      <section>
+        <h2>匯入 GPX（只在此瀏覽器顯示）</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="gpxInput" accept=".gpx" multiple hidden>
+          <span>拖曳 GPX 檔到地圖，或<u>點此選擇</u></span>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button id="fitBtn" class="btn">縮放至我的活動</button>
+        <button id="locateBtn" class="btn ghost">我的位置</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="banner" class="banner" hidden></div>
+  <div id="dropOverlay" class="drop-overlay" hidden><div>放開以匯入 GPX</div></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

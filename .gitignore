@@ -1,0 +1,4 @@
+# Strava 資料只在 GitHub Actions 內產生，不進版控
+site/data/activities.json
+.env
+__pycache__/

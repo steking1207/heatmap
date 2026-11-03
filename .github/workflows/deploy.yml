@@ -1,0 +1,56 @@
+name: 同步 Strava 並部署 GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/project-thread-75z3q2]
+  schedule:
+    - cron: "0 20 * * *" # 每天台灣時間 04:00 自動更新
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 從 Strava 抓取活動
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+          PRIVACY_TRIM_M: ${{ vars.PRIVACY_TRIM_M || '200' }}
+        run: |
+          if [ -z "$STRAVA_REFRESH_TOKEN" ]; then
+            echo "::notice::尚未設定 Strava secrets，網站會顯示示範資料。"
+          else
+            python scripts/fetch_strava.py
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
