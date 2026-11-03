@@ -36,6 +36,7 @@
   L.control.zoom({ position: "bottomright" }).addTo(map);
   map.createPane("heat").style.zIndex = 450;
   map.createPane("labels").style.zIndex = 550;
+  map.createPane("pick").style.zIndex = 500;
   map.getPane("labels").style.pointerEvents = "none";
 
   // OpenStreetMap 圖磚不需要 API key；深色／淺色以 CSS 濾鏡處理（見 style.css .tiles-*）
@@ -210,7 +211,7 @@
     const latlngs = [];
     const lats = pts.map((p) => p[0]), lngs = pts.map((p) => p[1]);
     latlngs.push([Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]);
-    return { xy, bb: [x0, y0, x1, y1], sport, date: date || "", year: (date || "").slice(0, 4), km: km || 0, local: !!local, race: !!race, bounds: latlngs };
+    return { pts, xy, bb: [x0, y0, x1, y1], sport, date: date || "", year: (date || "").slice(0, 4), km: km || 0, local: !!local, race: !!race, bounds: latlngs };
   }
 
   async function loadJson(url) {
@@ -234,7 +235,7 @@
       }
     }
     if (list.length) {
-      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => makeTrack(decodePolyline(a.p), a.s, a.d, a.km, false, a.r));
+      state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => Object.assign(makeTrack(decodePolyline(a.p), a.s, a.d, a.km, false, a.r), { id: String(a.id) }));
       state.generated = [api, imported].map((x) => x && x.generated).filter(Boolean).sort().pop();
     } else {
       state.demo = true;
@@ -450,9 +451,92 @@
     return m ? { z: +m[1], c: [+m[2], +m[3]] } : null;
   }
   map.on("moveend", () => {
+    if (window.Flyover?.isOpen()) return;
     const c = map.getCenter();
     history.replaceState(null, "", `#${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`);
   });
+
+  // ---------- 點選單一活動 → 3D 鳥瞰 ----------
+  let highlight = null;
+  function clearHighlight() { if (highlight) { map.removeLayer(highlight); highlight = null; } }
+  function showHighlight(t) {
+    clearHighlight();
+    highlight = L.polyline(t.pts, { color: getComputedStyle(document.documentElement).getPropertyValue("--" + t.sport).trim() || "#ff6a2b",
+      weight: 4, opacity: 0.95, interactive: false, pane: "pick" }).addTo(map);
+  }
+  function segDist2(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+    let f = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0;
+    f = Math.max(0, Math.min(1, f));
+    const x = ax + f * dx - px, y = ay + f * dy - py;
+    return x * x + y * y;
+  }
+  function tracksNear(latlng) {
+    const k = map.options.crs.scale(map.getZoom()) / 256;
+    const tol = (L.Browser.mobile ? 14 : 8) / k, tol2 = tol * tol;
+    const p = map.options.crs.latLngToPoint(latlng, 0);
+    const hits = [];
+    for (const t of visibleTracks()) {
+      const [x0, y0, x1, y1] = t.bb;
+      if (p.y < y0 - tol || p.y > y1 + tol) continue;
+      let best = Infinity;
+      for (const shift of [0, -256, 256]) {
+        const px = p.x + shift;
+        if (px < x0 - tol || px > x1 + tol) continue;
+        const xy = t.xy;
+        for (let i = 2; i < xy.length; i += 2) {
+          const d = segDist2(px, p.y, xy[i - 2], xy[i - 1], xy[i], xy[i + 1]);
+          if (d < best) best = d;
+        }
+      }
+      if (best <= tol2) hits.push(t);
+    }
+    return hits.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }
+  const MAX_PICK = 8;
+  map.on("click", (e) => {
+    if (window.Flyover?.isOpen()) return;
+    const hits = tracksNear(e.latlng);
+    if (!hits.length) { clearHighlight(); return; }
+    const list = document.createElement("div");
+    list.className = "pick";
+    const head = document.createElement("div");
+    head.className = "pick-head";
+    head.textContent = hits.length > 1 ? `這裡有 ${hits.length} 次活動` : "選擇活動";
+    list.appendChild(head);
+    hits.slice(0, MAX_PICK).forEach((t) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "pick-row";
+      b.innerHTML = `<i class="dot ${t.sport}"></i><span>${SPORT_NAMES[t.sport]}</span><em>${t.date || "—"} · ${t.km ? t.km.toFixed(1) : "?"} km</em><b>3D 鳥瞰 ▸</b>`;
+      b.onmouseenter = () => showHighlight(t);
+      b.onfocus = () => showHighlight(t);
+      b.onclick = () => { map.closePopup(); openFlyover(t); };
+      list.appendChild(b);
+    });
+    if (hits.length > MAX_PICK) {
+      const more = document.createElement("div");
+      more.className = "pick-more"; more.textContent = `另有 ${hits.length - MAX_PICK} 次，放大地圖可縮小範圍`;
+      list.appendChild(more);
+    }
+    showHighlight(hits[0]);
+    L.popup({ className: "pick-popup", maxWidth: 340, minWidth: 240, autoPanPaddingTopLeft: [16, 60], autoPanPaddingBottomRight: [16, 20] })
+      .setLatLng(e.latlng).setContent(list).openOn(map);
+  });
+  map.on("popupclose", () => { if (!window.Flyover?.isOpen()) clearHighlight(); });
+
+  let hashBeforeFly = "";
+  function openFlyover(t) {
+    if (!window.Flyover) return;
+    if (t.id) { hashBeforeFly = location.hash; history.replaceState(null, "", "#fly/" + encodeURIComponent(t.id)); }
+    window.Flyover.open(t);
+  }
+  if (window.Flyover) window.Flyover.onclose = () => {
+    clearHighlight();
+    if (location.hash.startsWith("#fly/")) {
+      const c = map.getCenter();
+      history.replaceState(null, "", hashBeforeFly || `#${map.getZoom()}/${c.lat.toFixed(4)}/${c.lng.toFixed(4)}`);
+    }
+  };
 
   // 事件
   $("#togglePanel").onclick = () => {
@@ -479,10 +563,15 @@
     setBasemap(state.basemap);
     if (window.innerWidth <= 640) $("#panel").classList.add("collapsed");
     const h = readHash();
+    const fly = location.hash.match(/^#fly\/(.+)$/);
     map.setView(h ? h.c : [23.7, 121], h ? h.z : 7);
     await loadData();
     buildYears(); buildPalettes(); update(); setSubtitle();
     if (!h) fitToData();
+    if (fly) {
+      const t = state.tracks.find((x) => x.id === decodeURIComponent(fly[1]));
+      if (t) { showHighlight(t); map.fitBounds(t.bounds, { padding: [40, 40] }); openFlyover(t); }
+    }
     if (state.demo) {
       showBanner('目前顯示的是<b>示範資料</b>。依照 <a href="https://github.com/steking1207/heatmap#readme" target="_blank" rel="noopener">README</a> 設定 Strava 後就會顯示你的活動，也可以直接拖曳 GPX 檔進來。', true);
     }

@@ -115,3 +115,69 @@ h2 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacin
 /* OSM 圖磚濾鏡：深色底圖讓熱圖更醒目 */
 .tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.78) contrast(1.15) saturate(0.25); }
 .tiles-light { filter: grayscale(1) brightness(1.04) contrast(0.92); }
+
+.hint { font-size: 12px; color: var(--muted); margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
+
+/* 點選活動 */
+.pick-popup .leaflet-popup-content-wrapper { background: var(--panel); color: var(--text); border-radius: 12px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--line); }
+.pick-popup .leaflet-popup-tip { background: var(--panel); }
+.pick-popup .leaflet-popup-content { margin: 10px; font-family: inherit; }
+.pick-popup a.leaflet-popup-close-button { color: var(--muted); }
+.pick-head { font-size: 12px; color: var(--muted); padding: 0 6px 6px; }
+.pick-row { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 13px; padding: 8px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
+.pick-row:hover, .pick-row:focus-visible { background: var(--line); outline: none; }
+.pick-row em { font-style: normal; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pick-row b { margin-left: auto; color: var(--accent); font-weight: 500; font-size: 12px; white-space: nowrap; }
+.pick-more { font-size: 11px; color: var(--muted); padding: 6px 6px 0; }
+
+/* 3D 鳥瞰 */
+.fly { position: fixed; inset: 0; z-index: 3000; background: #20262d; color: #eceef1; --fly: var(--accent); color-scheme: dark; }
+.fly .fly-map { position: absolute; inset: 0; }
+.fly-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 14px 16px; padding-top: max(14px, env(safe-area-inset-top)); pointer-events: none;
+  background: linear-gradient(rgba(0,0,0,.55), transparent); }
+.fly-top > * { pointer-events: auto; }
+.fly-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fly-title .dot { width: 10px; height: 10px; flex: none; }
+.fly-title b { display: block; font-size: 16px; }
+.fly-title .muted { color: rgba(255,255,255,.7); margin: 0; }
+.fly-tools { display: flex; align-items: center; gap: 8px; }
+.fly-close { color: #fff; background: rgba(0,0,0,.35); border-radius: 50%; padding: 6px; }
+.fly-close:hover { background: rgba(0,0,0,.55); color: #fff; }
+.fly-chip { border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.4); color: #fff; border-radius: 999px; padding: 5px 12px;
+  font: inherit; font-size: 13px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.fly-chip:hover { background: rgba(0,0,0,.6); }
+.fly .maplibregl-ctrl-top-right { top: 64px; }
+.fly-loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,.55); padding: 10px 16px; border-radius: 10px; font-size: 14px; }
+
+.fly-bottom { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(720px, calc(100% - 32px));
+  background: rgba(14,16,20,.78); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px 14px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  margin-bottom: env(safe-area-inset-bottom); }
+.fly-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.fly-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.fly-stats span { font-size: 11px; color: rgba(255,255,255,.6); }
+.fly-scrub { position: relative; height: 56px; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.06); cursor: pointer; touch-action: none; }
+.fly-scrub:focus-visible { outline: 2px solid var(--fly); }
+.fly-scrub svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fly-scrub .area { fill: rgba(255,255,255,.14); }
+.fly-scrub .line { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.fly-done { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: color-mix(in srgb, var(--fly) 28%, transparent); pointer-events: none; }
+.fly-cursor { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--fly); pointer-events: none; }
+.fly-ctrl { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.fly-play { width: 42px; height: 42px; flex: none; border: 0; border-radius: 50%; background: var(--fly); color: #fff; cursor: pointer; display: grid; place-items: center; }
+.fly-speed button { color: #fff; border-color: rgba(255,255,255,.2); }
+.fly-speed button[aria-checked="true"] { background: var(--fly); border-color: var(--fly); }
+.fly-ctrl .fly-chip { margin-left: auto; }
+
+.fly-head { width: 16px; height: 16px; border-radius: 50%; background: var(--fly); border: 3px solid #fff; box-shadow: 0 0 0 6px color-mix(in srgb, var(--fly) 35%, transparent), 0 2px 8px rgba(0,0,0,.5); }
+
+@media (max-width: 640px) {
+  .fly-bottom { bottom: 12px; padding: 10px 12px; }
+  .fly-stats b { font-size: 17px; }
+  .fly-scrub { height: 44px; }
+  .fly-title b { font-size: 15px; }
+}
+.fly .maplibregl-ctrl-attrib { font-size: 11px; }
+.fly .maplibregl-ctrl-attrib.maplibregl-compact { margin-top: 8px; }
