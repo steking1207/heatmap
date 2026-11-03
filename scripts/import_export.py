@@ -155,17 +155,22 @@ def parse_file(name, data):
 
 
 # ---------- 走訪輸入 ----------
+WANTED = re.compile(r"(\.(gpx|tcx|fit)(\.gz)?|activities\.csv)$", re.I)
+
+
 def walk_input(path):
-    """產生 (相對路徑, bytes)；zip 內的 zip 也會展開（Garmin 匯出檔是多層 zip）。"""
+    """產生 (相對路徑, bytes)；zip 內的 zip 也會展開（Garmin 匯出檔是多層 zip）。
+    只讀取活動檔與 activities.csv，略過照片等其他檔案以節省記憶體。"""
     if os.path.isdir(path):
         for d, _, files in os.walk(path):
             for f in files:
                 full = os.path.join(d, f)
                 rel = os.path.relpath(full, path)
-                with open(full, "rb") as fh:
-                    if f.lower().endswith(".zip"):
-                        yield from walk_zip(zipfile.ZipFile(fh), rel + "/")
-                    else:
+                if f.lower().endswith(".zip"):
+                    with zipfile.ZipFile(full) as z:
+                        yield from walk_zip(z, rel + "/")
+                elif WANTED.search(f):
+                    with open(full, "rb") as fh:
                         yield rel, fh.read()
     else:
         with zipfile.ZipFile(path) as z:
@@ -176,11 +181,11 @@ def walk_zip(z, prefix):
     for info in z.infolist():
         if info.is_dir():
             continue
-        data = z.read(info)
         if info.filename.lower().endswith(".zip"):
-            yield from walk_zip(zipfile.ZipFile(io.BytesIO(data)), prefix + info.filename + "/")
-        else:
-            yield prefix + info.filename, data
+            with zipfile.ZipFile(io.BytesIO(z.read(info))) as inner:
+                yield from walk_zip(inner, prefix + info.filename + "/")
+        elif WANTED.search(info.filename):
+            yield prefix + info.filename, z.read(info)
 
 
 # ---------- 路線簡化 ----------
