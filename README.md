@@ -50,12 +50,30 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 
 **Actions → 同步 Strava 並部署 GitHub Pages → Run workflow**。之後每天台灣時間 04:00 會自動更新。
 
+## 從匯出檔匯入（不需要 Strava API）
+
+適合沒有 Strava 訂閱、或想一次補齊所有歷史活動的情況。支援 Strava 和 Garmin Connect 的匯出檔，也支援任何放了 `.gpx`、`.tcx`、`.fit`（可為 `.gz`）的資料夾。
+
+1. 取得匯出檔（兩個擇一即可）：
+   - **Strava**（建議，通常幾小時內收到）：設定 → 我的帳號 → 下載或刪除你的帳號 → 「要求封存」，Email 會收到 zip。
+   - **Garmin Connect**：<https://www.garmin.com/account/datamanagement/> → 匯出你的資料，可能要等數天。
+2. 執行轉換：
+   ```bash
+   pip install fitdecode
+   python3 scripts/import_export.py ~/Downloads/export_12345.zip
+   ```
+3. 會產生 `site/data/imported.json`，commit 並 push 後就會部署上去。
+
+再次匯入時會和既有資料合併；同一個活動（以開始時間判斷）不會重複出現。運動類型優先採用 Strava 的 `activities.csv`，否則讀 FIT 檔內的運動類型；室內騎乘、跑步機等沒有 GPS 的活動會自動略過。
+
+API 同步和匯出檔可以同時使用，網站會自動合併兩邊的資料並去除重複。
+
 ## 隱私
 
 GitHub Pages 是公開網站，任何拿到網址的人都看得到你的路線。
 
 - 每條路線的起點和終點預設各裁掉 200 公尺，避免直接暴露住家位置。要調整的話，到 **Settings → Secrets and variables → Actions → Variables** 新增 `PRIVACY_TRIM_M`（單位公尺，`0` 代表不裁切）。
-- 活動資料只在 Actions 執行時產生並直接部署，不會 commit 進 repo。
+- Strava API 抓到的資料只在 Actions 執行時產生並直接部署，不會 commit 進 repo；匯出檔轉出的 `imported.json` 則需要 commit（已套用同樣的頭尾裁切）。
 - 只會讀取路線摘要（`summary_polyline`）、日期、距離、運動類型。
 
 ## 運動類型對應
@@ -86,8 +104,10 @@ cd site && python3 -m http.server 8000
 site/                 靜態網站（GitHub Pages 發佈這個資料夾）
   index.html, app.js, style.css
   vendor/leaflet/     Leaflet 1.9.4（BSD-2-Clause）
-  data/activities.json  由 Actions 產生
+  data/activities.json  由 Actions 從 Strava API 產生
+  data/imported.json    由匯出檔轉換產生
 scripts/
+  import_export.py      Strava／Garmin 匯出檔轉換
   fetch_strava.py       從 Strava API 抓活動
   get_refresh_token.py  一次性取得 refresh token
 .github/workflows/deploy.yml

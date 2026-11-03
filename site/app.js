@@ -211,16 +211,30 @@
     return { xy, bb: [x0, y0, x1, y1], sport, date: date || "", year: (date || "").slice(0, 4), km: km || 0, local: !!local, bounds: latlngs };
   }
 
-  async function loadData() {
+  async function loadJson(url) {
     try {
-      const res = await fetch("data/activities.json", { cache: "no-cache" });
-      if (!res.ok) throw new Error(res.status);
-      const json = await res.json();
-      const list = json.activities || [];
-      if (!list.length) throw new Error("empty");
+      const res = await fetch(url, { cache: "no-cache" });
+      return res.ok ? await res.json() : null;
+    } catch { return null; }
+  }
+
+  async function loadData() {
+    // activities.json：Strava API 每日同步；imported.json：匯出檔匯入（scripts/import_export.py）
+    const [api, imported] = await Promise.all([loadJson("data/activities.json"), loadJson("data/imported.json")]);
+    const seen = new Set();
+    const list = [];
+    for (const src of [api, imported]) {
+      for (const a of (src && src.activities) || []) {
+        const keys = [String(a.id), a.t].filter(Boolean);
+        if (keys.some((k) => seen.has(k))) continue;
+        keys.forEach((k) => seen.add(k));
+        list.push(a);
+      }
+    }
+    if (list.length) {
       state.tracks = list.filter((a) => SPORTS.includes(a.s)).map((a) => makeTrack(decodePolyline(a.p), a.s, a.d, a.km));
-      state.generated = json.generated;
-    } catch {
+      state.generated = [api, imported].map((x) => x && x.generated).filter(Boolean).sort().pop();
+    } else {
       state.demo = true;
       state.tracks = demoTracks();
     }

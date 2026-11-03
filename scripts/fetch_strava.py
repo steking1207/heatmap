@@ -156,6 +156,7 @@ def main():
             "s": sport,
             "d": a["start_date_local"][:10],
             "km": round(a.get("distance", 0) / 1000, 2),
+            "t": (a.get("start_date") or "")[:16],
             "p": encode(pts),
         })
 
