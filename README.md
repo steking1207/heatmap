@@ -121,4 +121,4 @@ scripts/
 .github/workflows/deploy.yml
 ```
 
-地圖底圖：© OpenStreetMap contributors、© CARTO、Esri World Imagery。
+地圖底圖：© OpenStreetMap contributors、Esri World Imagery。

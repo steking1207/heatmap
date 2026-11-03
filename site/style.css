@@ -111,3 +111,7 @@ h2 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacin
   #togglePanel svg { transform: rotate(180deg); }
   .panel.collapsed #togglePanel svg { transform: none; }
 }
+
+/* OSM 圖磚濾鏡：深色底圖讓熱圖更醒目 */
+.tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.78) contrast(1.15) saturate(0.25); }
+.tiles-light { filter: grayscale(1) brightness(1.04) contrast(0.92); }

@@ -37,15 +37,16 @@
   map.createPane("labels").style.zIndex = 550;
   map.getPane("labels").style.pointerEvents = "none";
 
-  const CARTO = "https://{s}.basemaps.cartocdn.com/";
-  const cartoAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  // OpenStreetMap 圖磚不需要 API key；深色／淺色以 CSS 濾鏡處理（見 style.css .tiles-*）
+  const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const osmAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  const osm = (cls) => L.tileLayer(OSM, { attribution: osmAttr, maxZoom: 19, className: cls });
   const BASEMAPS = {
-    dark: [L.tileLayer(CARTO + "dark_nolabels/{z}/{x}/{y}{r}.png", { attribution: cartoAttr, subdomains: "abcd", maxZoom: 19 }),
-           L.tileLayer(CARTO + "dark_only_labels/{z}/{x}/{y}{r}.png", { pane: "labels", subdomains: "abcd", maxZoom: 19, opacity: 0.7 })],
-    light: [L.tileLayer(CARTO + "light_nolabels/{z}/{x}/{y}{r}.png", { attribution: cartoAttr, subdomains: "abcd", maxZoom: 19 }),
-            L.tileLayer(CARTO + "light_only_labels/{z}/{x}/{y}{r}.png", { pane: "labels", subdomains: "abcd", maxZoom: 19 })],
+    dark: [osm("tiles-dark")],
+    light: [osm("tiles-light")],
+    street: [osm("tiles-street")],
     satellite: [L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      { attribution: "Imagery &copy; Esri", maxZoom: 19 })],
+      { attribution: "Imagery &copy; Esri", maxZoom: 19, maxNativeZoom: 18 })],
   };
   let activeBase = [];
   function setBasemap(name) {
@@ -53,7 +54,7 @@
     activeBase.forEach((l) => map.removeLayer(l));
     activeBase = BASEMAPS[name];
     activeBase.forEach((l) => l.addTo(map));
-    document.documentElement.dataset.theme = name === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = name === "light" || name === "street" ? "light" : "dark";
     state.basemap = name;
     store.set("basemap", name);
   }
