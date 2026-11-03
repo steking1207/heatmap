@@ -42,6 +42,7 @@ NAME_MAP = {
     "gravelcycling": "ride", "mountainbiking": "ride", "roadbiking": "ride", "roadcycling": "ride",
     "礫石路騎行": "ride", "登山車騎行": "ride", "電動自行車騎行": "ride",
 }
+SPORT_KEYS = {"run", "trail_run", "walk", "hike", "ride"}
 SKIP_SUBSPORTS = {"indoor_cycling", "virtual_activity", "treadmill", "indoor_running", "spin", "indoor_walking"}
 
 
@@ -264,7 +265,10 @@ def main(paths):
                 continue
             m = meta.get(name, {})
             csv_type = m.get("type")
-            sport = norm_sport(csv_type) if csv_type else res["sport"]
+            # 檔案放在以運動命名的資料夾（例如 inbox/hike/）時以資料夾為準
+            folder_sport = next((p if p in SPORT_KEYS else norm_sport(p) for p in re.split(r"[\\/]", name)[:-1]
+                                 if p in SPORT_KEYS or norm_sport(p)), None)
+            sport = folder_sport or (norm_sport(csv_type) if csv_type else res["sport"])
             if csv_type and not sport:
                 sport = None  # CSV 明確是其他運動（例如游泳）
             if not sport:

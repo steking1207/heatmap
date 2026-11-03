@@ -66,6 +66,14 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 
 再次匯入時會和既有資料合併；同一個活動（以開始時間判斷）不會重複出現。運動類型優先採用 Strava 的 `activities.csv`，否則讀 FIT 檔內的運動類型；室內騎乘、跑步機等沒有 GPS 的活動會自動略過。
 
+### 之後的新活動：上傳到 `inbox/`
+
+不想每次都重新匯出全部資料的話，可以只上傳新活動的檔案：
+
+1. 從 Garmin Connect 活動頁「⚙ → 匯出原始檔」（FIT）或 Strava 活動頁「⋯ → 匯出 GPX」下載單一活動。
+2. 在 GitHub 網頁打開 [`inbox/`](inbox/) → **Add file → Upload files** → 拖曳檔案 → **Commit changes**（手機也可以）。
+3. Actions 會自動轉換、合併進 `imported.json`、清空 `inbox/` 並重新部署。
+
 API 同步和匯出檔可以同時使用，網站會自動合併兩邊的資料並去除重複。
 
 ## 隱私
