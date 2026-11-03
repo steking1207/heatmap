@@ -57,6 +57,9 @@ jobs:
             python scripts/fetch_strava.py || echo "::warning::Strava API 抓取失敗，這次只部署匯入的資料。請查看上方錯誤訊息。"
           fi
 
+      - name: 加上版本號，避免瀏覽器混用新舊檔案
+        run: sed -i "s/__V__/${GITHUB_SHA::8}/g" site/index.html
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
