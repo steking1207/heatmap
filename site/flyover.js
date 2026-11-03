@@ -166,7 +166,7 @@
         <div class="fly-ctrl">
           <button class="fly-play" data-act="play" type="button" aria-label="播放"></button>
           <div class="seg fly-speed" role="radiogroup" aria-label="播放速度"></div>
-          <button class="fly-chip" data-act="follow" type="button">鏡頭跟隨</button>
+          <button class="fly-chip" data-act="follow" type="button">重設視角</button>
         </div>
       </div>`;
     document.body.appendChild(el);
@@ -183,14 +183,13 @@
       if (act === "close") close();
       else if (act === "play") togglePlay();
       else if (act === "base") setBase(run.base === "sat" ? "map" : "sat");
-      else if (act === "follow") { run.follow = true; ui.follow.hidden = true; if (!run.playing) frameCamera(true); }
+      else if (act === "follow") { resetView(); frameCamera(true); }
     });
     // 拖曳進度
     const seek = (e) => {
       const r = ui.scrub.getBoundingClientRect();
       const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
       run.d = f * run.path.total; run.done = false;
-      run.follow = true; ui.follow.hidden = true;
       render(true);
     };
     ui.scrub.addEventListener("pointerdown", (e) => {
@@ -293,7 +292,10 @@
     const target = dist(back, ahead) > 5 ? bearing(back, ahead) : run.bearing;
     if (instant || run.bearing == null) run.bearing = target;
     else run.bearing += wrap180(target - run.bearing) * run.smooth;
-    map.jumpTo({ center: here, bearing: run.bearing, pitch: 62, zoom: run.zoom, padding: followPad() });
+    absorbUserCamera();
+    map.jumpTo(camera(here));
+    const c = map.getCenter();
+    run.lastCam = { here, routeBearing: run.bearing, center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() };
   }
 
   function render(instant) {
@@ -302,7 +304,7 @@
     if (run.ready) {
       map.getSource("done").setData(line([...path.coords.slice(0, i + 1), p]));
       run.marker.setLngLat(p);
-      if (run.follow) frameCamera(instant);
+      frameCamera(instant);
     }
     const f = run.d / path.total;
     ui.done.style.width = f * 100 + "%";
@@ -332,13 +334,12 @@
     if (!run || !run.ready) return;
     if (run.playing) { pause(); return; }
     if (run.done) { run.d = 0; run.done = false; run.bearing = null; }
-    run.follow = true; ui.follow.hidden = true;
     const start = () => { run.playing = true; run.last = 0; setPlayIcon(); run.raf = requestAnimationFrame(tick); };
     // 從總覽畫面切入起點
     if (run.d === 0) {
       const b0 = bearing(run.path.coords[0], locate(run.path, Math.min(run.path.total, 300)).p);
       run.bearing = b0;
-      map.flyTo({ center: run.path.coords[0], zoom: run.zoom, pitch: 62, bearing: b0, padding: followPad(), duration: 2600, essential: true });
+      map.flyTo({ ...camera(run.path.coords[0]), duration: 2600, essential: true });
       run.playing = true; setPlayIcon();
       map.once("moveend", () => { if (run && run.playing) { run.playing = false; start(); } });
     } else start();
@@ -349,12 +350,38 @@
   }
 
   function finish() {
-    run.playing = false; run.done = true; setPlayIcon();
+    run.playing = false; run.done = true; run.lastCam = null; setPlayIcon();
     map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     map.fitBounds(bounds(run.path.coords), { padding: pad(), pitch: 50, bearing: run.bearing || 0, duration: 3000, essential: true });
   }
 
   // 跟隨時讓目前位置落在下方控制列之上、畫面偏下處，前方視野較多
+  // 鏡頭 = 目前位置 + 使用者調整的偏移（位置、方位、俯角、遠近），播放／暫停時都可以用手勢調整
+  const DEFAULT_PITCH = 62;
+  function camera(here) {
+    return {
+      center: [here[0] + run.offset[0], here[1] + run.offset[1]],
+      bearing: run.bearing + run.bearingOffset, pitch: run.pitch, zoom: run.zoom, padding: followPad(),
+    };
+  }
+  function resetView() {
+    run.offset = [0, 0]; run.bearingOffset = 0; run.pitch = DEFAULT_PITCH; run.zoom = run.zoom0; run.lastCam = null;
+    ui.follow.hidden = true;
+  }
+  // 上一格鏡頭和目前地圖狀態不同 → 是使用者用手勢（拖曳、旋轉、滾輪、雙指）調整的，把差異記成偏移
+  function absorbUserCamera() {
+    const L = run.lastCam;
+    if (!L) return;
+    const c = map.getCenter(), z = map.getZoom(), b = map.getBearing(), p = map.getPitch();
+    const moved = Math.abs(c.lng - L.center[0]) > 1e-7 || Math.abs(c.lat - L.center[1]) > 1e-7 ||
+      Math.abs(z - L.zoom) > 1e-4 || Math.abs(wrap180(b - L.bearing)) > 0.01 || Math.abs(p - L.pitch) > 0.01;
+    if (!moved) return;
+    run.offset = [c.lng - L.here[0], c.lat - L.here[1]];
+    run.bearingOffset = wrap180(b - L.routeBearing);
+    run.pitch = p; run.zoom = z;
+    ui.follow.hidden = false;
+  }
+
   function followPad() {
     const h = ui.q(".fly-bottom").getBoundingClientRect().height;
     return { top: Math.round(window.innerHeight * 0.18), bottom: Math.round(h + 20), left: 0, right: 0 };
@@ -383,8 +410,9 @@
     const color = SPORT_COLORS[track.sport] || "#ff6a2b";
     const km = track.km || path.total / 1000;
     run = {
-      track, path, km, zoom: cameraZoom(path.total), d: 0, speed: +store.get("flySpeed", 1) || 1,
-      duration: Math.max(25, Math.min(120, 22 + km * 1.3)), follow: true, playing: false, done: false,
+      track, path, km, zoom: cameraZoom(path.total), zoom0: cameraZoom(path.total), d: 0,
+      offset: [0, 0], bearingOffset: 0, pitch: DEFAULT_PITCH, speed: +store.get("flySpeed", 1) || 1,
+      duration: Math.max(25, Math.min(120, 22 + km * 1.3)), playing: false, done: false,
       base: store.get("flyBase", "sat") === "map" ? "map" : "sat", bearing: null, smooth: 0.05,
     };
     if (!SPEEDS.includes(run.speed)) run.speed = 1;
@@ -418,12 +446,6 @@
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "top-right");
-    const stopFollow = (e) => {
-      if (!e.originalEvent) return; // 只處理使用者手勢
-      run.follow = false; ui.follow.hidden = false;
-    };
-    map.on("dragstart", stopFollow); map.on("rotatestart", stopFollow); map.on("pitchstart", stopFollow);
-    map.on("wheel", (e) => { if (run.playing) { run.zoom = Math.max(11, Math.min(17.5, run.zoom - e.originalEvent.deltaY * 0.002)); e.preventDefault(); } });
 
     const init = () => {
       if (run !== me || run.ready) return;
