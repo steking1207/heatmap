@@ -155,7 +155,7 @@ h2 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacin
   background: rgba(14,16,20,.78); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px 14px;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0,0,0,.35);
   margin-bottom: env(safe-area-inset-bottom); }
-.fly-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.fly-stats { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
 .fly-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
 .fly-stats span { font-size: 11px; color: rgba(255,255,255,.6); }
 .fly-scrub { position: relative; height: 56px; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.06); cursor: pointer; touch-action: none; }
@@ -176,6 +176,8 @@ h2 { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacin
 @media (max-width: 640px) {
   .fly-bottom { bottom: 12px; padding: 10px 12px; }
   .fly-stats b { font-size: 17px; }
+  .fly-stats { gap: 4px; }
+  .fly-stats span { font-size: 10px; }
   .fly-scrub { height: 44px; }
   .fly-title b { font-size: 15px; }
 }

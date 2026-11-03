@@ -81,7 +81,7 @@ API 同步和匯出檔可以同時使用，網站會自動合併兩邊的資料�
 
 GitHub Pages 是公開網站，任何拿到網址的人都看得到你的路線。
 
-- 每條路線的起點和終點預設各裁掉 200 公尺，避免直接暴露住家位置。要調整的話，到 **Settings → Secrets and variables → Actions → Variables** 新增 `PRIVACY_TRIM_M`（單位公尺，`0` 代表不裁切）。
+- 每條路線的起點和終點預設各裁掉 100 公尺，避免直接暴露住家位置。要調整的話，到 **Settings → Secrets and variables → Actions → Variables** 新增 `PRIVACY_TRIM_M`（單位公尺，`0` 代表不裁切）。
 - Strava API 抓到的資料只在 Actions 執行時產生並直接部署，不會 commit 進 repo；匯出檔轉出的 `imported.json` 則需要 commit（已套用同樣的頭尾裁切）。
 - 只會讀取路線摘要（`summary_polyline`）、日期、距離、運動類型。
 
