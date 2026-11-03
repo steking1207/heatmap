@@ -36,7 +36,8 @@ jobs:
           if [ -z "$STRAVA_REFRESH_TOKEN" ]; then
             echo "::notice::尚未設定 Strava secrets，網站會顯示示範資料。"
           else
-            python scripts/fetch_strava.py
+            # 抓取失敗（例如 Strava API 權限問題）時不阻擋部署，網站仍會顯示匯入的資料
+            python scripts/fetch_strava.py || echo "::warning::Strava API 抓取失敗，這次只部署匯入的資料。請查看上方錯誤訊息。"
           fi
 
       - uses: actions/configure-pages@v5
