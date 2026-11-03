@@ -522,6 +522,16 @@
     L.popup({ className: "pick-popup", maxWidth: 340, minWidth: 240, autoPanPaddingTopLeft: [16, 60], autoPanPaddingBottomRight: [16, 20] })
       .setLatLng(e.latlng).setContent(list).openOn(map);
   });
+  // 滑鼠移到路線上時顯示手指游標，讓人知道可以點
+  let hoverFrame = null, hoverLatLng = null;
+  map.on("mousemove", (e) => {
+    hoverLatLng = e.latlng;
+    if (hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = null;
+      map.getContainer().style.cursor = tracksNear(hoverLatLng).length ? "pointer" : "";
+    });
+  });
   map.on("popupclose", () => { if (!window.Flyover?.isOpen()) clearHighlight(); });
 
   let hashBeforeFly = "";
